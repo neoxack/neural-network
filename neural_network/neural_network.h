@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <float.h>
 
 typedef struct _neural_network {
 	double *x;
@@ -33,6 +34,10 @@ typedef struct _neural_network {
 	double *error;
 	double **dE_dw1;
 	double **dE_dw2;
+
+	//quickprop
+	double **dE_dw1_old;
+	double **dE_dw2_old;
 
 } neural_network;
 
@@ -75,26 +80,34 @@ neural_network * neural_network_new(size_t N, size_t K, size_t M, double (*f1)(d
 	net->v[0] = 1.0;
 
 	net->w1 = (double **)malloc((K+1) * sizeof(double *));
+
 	net->w1_old = (double **)malloc((K+1) * sizeof(double *));
 	net->dE_dw1 = (double **)malloc((K+1) * sizeof(double *));
+	net->dE_dw1_old = (double **)malloc((K+1) * sizeof(double *));
 	for (size_t i = 0; i <= K; i++) 
 	{
 		net->w1[i] = (double *)malloc((N+1) * sizeof(double));
+	
 		net->w1_old[i] = (double *)calloc((N+1) , sizeof(double));
-		net->dE_dw1[i] = (double *)malloc((N+1) * sizeof(double));
+		net->dE_dw1[i] = (double *)calloc((N+1) , sizeof(double));
+		net->dE_dw1_old[i] = (double *)calloc((N+1), sizeof(double));
 	}
 
 	net->w2 = (double **)malloc((M+1) * sizeof(double *));
+	
 	net->w2_old = (double **)malloc((M+1) * sizeof(double *));
 	net->dE_dw2 = (double **)malloc((M+1) * sizeof(double *));
+	net->dE_dw2_old = (double **)malloc((M+1) * sizeof(double *));
 	for (size_t i = 0; i <= M; i++)
 	{
 		net->w2[i] = (double *)malloc((K+1) * sizeof(double));
+	
 		net->w2_old[i] = (double *)calloc((K+1), sizeof(double));
-		net->dE_dw2[i] = (double *)malloc((K+1) * sizeof(double));
+		net->dE_dw2[i] = (double *)calloc((K+1) , sizeof(double));
+		net->dE_dw2_old[i] = (double *)calloc((K+1), sizeof(double));
 	}
 
-	set_random_weights(net, -0.1, 0.1);
+	set_random_weights(net, -0.2, 0.2);
 
 	return net;
 }
@@ -117,6 +130,7 @@ void neural_network_delete(neural_network * net)
 		free(net->w1[i]);
 		free(net->w1_old[i]);
 		free(net->dE_dw1[i]);
+		free(net->dE_dw1_old[i]);
 	}
 
 	for (size_t i = 0; i <= net->M; i++)
@@ -124,6 +138,7 @@ void neural_network_delete(neural_network * net)
 		free(net->w2[i]);
 		free(net->w2_old[i]);
 		free(net->dE_dw2[i]);
+		free(net->dE_dw2_old[i]);
 	}
 
 	free(net->w1);
@@ -335,6 +350,110 @@ static void fd_moment_teach(neural_network * net, learning_selection *selections
 			change_weights_with_moments(net, eta, α);
 		}
 		printf("%f,\n", E/2);
-	//	eta = 0.98 * eta;
+	}
+}
+
+
+double alpha_max = 1.75;
+
+void quickprop_change_weights(neural_network * net, double η)
+{
+	double delta_w;
+	double epsilon = η;
+	double slope;
+	double prev_step;
+	double shrink_factor = (double) (alpha_max / (1.0 + alpha_max));
+	double prev_slope;
+
+	for (size_t i = 1; i <= net->K; i++)
+		for (size_t j = 0; j <= net->N; j++)
+		{
+			prev_step = net->w1[i][j] - net->w1_old[i][j];
+			slope = -net->dE_dw1[i][j] + (-0.0001 * net->w1[i][j]);
+			prev_slope = net->dE_dw1_old[i][j];
+			delta_w = 0.0;
+
+			if(prev_step > 0.001)
+			{
+				if(slope > 0.0) /*  Add in linear term if current slope is still positive. */
+					delta_w += epsilon * slope;
+
+				if(slope > (shrink_factor * prev_slope))
+					delta_w += alpha_max * prev_step;	
+				else
+					delta_w+= prev_step * slope / (prev_slope - slope);
+			}
+			else if(prev_step < -0.001)
+			{
+				if(slope < 0.0) /*  Add in linear term if current slope is still positive. */
+					delta_w += epsilon * slope;
+
+				if(slope < (shrink_factor * prev_slope))
+					delta_w += alpha_max * prev_step;	
+				else
+					delta_w += prev_step * slope / (prev_slope - slope);	
+			}
+			else 
+				delta_w += epsilon * slope; 
+
+			net->w1_old[i][j] = net->w1[i][j];
+			net->w1[i][j] +=delta_w;
+			net->dE_dw1_old[i][j] = slope;
+		}
+
+	for (size_t i = 1; i <= net->M; i++)
+		for (size_t j = 0; j <= net->K; j++)
+		{
+			prev_step = net->w2[i][j] - net->w2_old[i][j];
+			slope = -net->dE_dw2[i][j] + (-0.0001 * net->w2[i][j]);;
+			prev_slope = net->dE_dw2_old[i][j];
+			delta_w = 0.0;
+
+			if(prev_step > 0.001)
+			{
+				if(slope > 0.0) /*  Add in linear term if current slope is still positive. */
+					delta_w += epsilon * slope;
+
+				if(slope > (shrink_factor * prev_slope))
+					delta_w +=alpha_max * prev_step;	
+				else
+					delta_w+= prev_step * slope / (prev_slope - slope);	
+			}
+			else if(prev_step < -0.001)
+			{
+				if(slope < 0.0) /*  Add in linear term if current slope is still positive. */
+					delta_w += epsilon * slope;
+
+				if(slope < (shrink_factor * prev_slope))
+					delta_w += alpha_max * prev_step;	
+				else
+					delta_w += prev_step * slope / (prev_slope - slope);	
+			}
+			else 
+				delta_w += epsilon * slope; 
+
+			net->w2_old[i][j] = net->w2[i][j];
+			net->w2[i][j] +=delta_w;
+			net->dE_dw2_old[i][j] = slope;
+		}
+
+}
+
+
+void quickprop_teach(neural_network * net, learning_selection *selections, size_t selection_count, double η, double retries_count)
+{
+	double E;
+	double eta = η;
+
+	for(size_t r = 0; r < retries_count; r++)
+	{	
+		E = 0.0;
+		for(size_t i = 0; i < selection_count; i++)
+		{
+			E+=back_propagation_step(net, &selections[i]);
+			quickprop_change_weights(net, eta);		
+		}
+
+		printf("%f,\n", E/2);
 	}
 }

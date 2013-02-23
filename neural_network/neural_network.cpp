@@ -12,7 +12,7 @@ __inline double f(double x)
 
 __inline double df(double x)
 {
-	return 1.0/(pow(cosh(x), 2));
+	return 1.0 -(pow(tanh(x), 2));
 }
 
 
@@ -77,11 +77,12 @@ void delete_selections(learning_selection * selections, size_t count)
 void iris_test()
 {
 	printf("[iris test]\n");
-	neural_network *net = neural_network_new(4, 5, 3, f, df, sin, cos);
+	neural_network *net = neural_network_new(4, 7, 3, f, df, sin, cos);
 	learning_selection * selection = create_iris_selections(144);
 
 	//fd_teach(net, selection, 144, 0.02, 100);
 	fd_moment_teach(net, selection, 144, 0.02, 0.7, 100);
+	//quickprop_teach(net, selection, 144, 0.02, 100);
 
 	double x1[] = {5.1, 3.5, 1.4, 0.3};
 	double x2[] = {6.4, 2.9, 4.3, 1.3};
@@ -132,7 +133,8 @@ void wine_test()
 	neural_network *net = neural_network_new(13, 13, 3, f, df, sin, cos);
 	learning_selection * selection = create_wine_selections(90);
 	//fd_teach(net, selection, 90, 0.02, 100);
-	fd_moment_teach(net, selection, 90, 0.02, 0.7, 100);
+	//fd_moment_teach(net, selection, 90, 0.02, 0.8, 100);
+	quickprop_teach(net, selection, 90, 0.02, 100);
 
 	double x1[] = {0.8, 0.152, 0.725, 0.221052632, 0.456521739, 0.756666667, 0.678, 0.34, 0.4925, 0.479166667, 0.525, 0.616666667, 0.835948645};
 	double x2[] = {0.3425, 0.034, 0.46, 0.452631579, 0.086956522, 0.37, 0.4, 0.27, 0.26, 0.306666667, 0.56, 0.826666667, 0.165477889};
